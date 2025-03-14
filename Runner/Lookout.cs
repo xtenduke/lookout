@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Lookout.Runner.Docker;
@@ -11,8 +12,14 @@ public interface ILookout
     public Task Start();
 }
 
-public class Lookout(DockerClient dockerClient, IQueueListener queueListener, IContainerUpdater containerUpdater) : IQueueListenerDelegate, ILookout
+public class Lookout(IDockerClient dockerClient, IQueueListener queueListener, IContainerUpdater containerUpdater) : IQueueListenerDelegate, ILookout
 {
+    private static readonly ConcurrentDictionary<string, DateTime> MessageCache = new();
+    // I should be something like 30s * the number of containers I expect are running
+    // Maybe instead we should be dispatching an async event per running container
+    // Doesn't really make much sense
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(30);
+
     public async Task Start()
     {
         queueListener.StartListening("fakequeuearn", this);
@@ -22,10 +29,22 @@ public class Lookout(DockerClient dockerClient, IQueueListener queueListener, IC
 
     public void OnReceived(QueueMessage message)
     {
-        _ = Task.Run(async () =>
+        if (MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow))
         {
-            await ProcessMessage(message);
-        });
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await ProcessMessage(message);
+                }
+                finally
+                {
+                    // Remove the message from cache after the cache duration
+                    await Task.Delay(CacheDuration);
+                    MessageCache.TryRemove(message.ImageDescription.Name, out _);
+                }
+            });
+        }
     }
 
     private async Task ProcessMessage(QueueMessage message)
@@ -34,32 +53,30 @@ public class Lookout(DockerClient dockerClient, IQueueListener queueListener, IC
         var containers = await dockerClient.Containers.ListContainersAsync(listParameters);
         var newImageDescription = message.ImageDescription;
 
-        var matchingContainer = containers.Where(x =>
+        var matchingContainers = containers.Where(x =>
         {
             var localContainerImageName = DockerUtil.GetImageNameFromImageDescription(x.Image);
             return localContainerImageName == newImageDescription.Name;
         }).ToList();
 
-        if (!matchingContainer.Any())
+        if (matchingContainers.Count() == 0)
         {
             Logger.Error($"Found no containers running {newImageDescription.Name} for update to {newImageDescription.Name}:{newImageDescription.Tag}");
         }
 
-        foreach (var container in matchingContainer)
-        {
-            var runningContainerImageTag = DockerUtil.GetImageTagFromImageDescription(container.Image);
+        var matchingOutdatedContainers = matchingContainers.Where(container =>
+            DockerUtil.GetImageTagFromImageDescription(container.Image) != newImageDescription.Tag).ToList();
 
-            if (runningContainerImageTag != newImageDescription.Tag)
-            {
-                Logger.Info($"Found {container.Image} running wrong image {runningContainerImageTag} != {newImageDescription.Tag}");
-                Logger.Debug("Downloading new image...");
-                await containerUpdater.HandleContainerImageUpdate(container, newImageDescription);
-                Logger.Info("Complete");
-            }
-            else
-            {
-                Logger.Debug($"Found container {container.ID} running correct image");
-            }
+        var upToDateContainers = matchingContainers.Except(matchingOutdatedContainers).ToList();
+        if (upToDateContainers.Count() > 0)
+        {
+            Logger.Debug($"Found containers running correct image: ${upToDateContainers.Select(x => $"{x.ID}\n")}");
+        }
+
+        if (matchingOutdatedContainers.Count() > 0)
+        {
+            Logger.Debug($"Found containers running outdated image: ${matchingOutdatedContainers.Select(x => $"{x.ID}\n")}");
+            await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription);
         }
     }
 }

@@ -7,12 +7,26 @@ namespace Lookout.Runner.Docker;
 
 public interface IContainerUpdater
 {
-    public Task HandleContainerImageUpdate(ContainerListResponse container, ImageDescription imageDescription);
+    public Task HandleContainerImageUpdate(IReadOnlyCollection<ContainerListResponse> containers, ImageDescription imageDescription);
 }
 
-public class ContainerUpdater(DockerClient dockerClient): IContainerUpdater
+public class ContainerUpdater(IDockerClient dockerClient): IContainerUpdater
 {
-    public async Task HandleContainerImageUpdate(ContainerListResponse container, ImageDescription imageDescription)
+    // Update multiple containers running the same image
+    // Trust the caller to send good container data
+    // Also trust the caller to be concurrent aware
+    public async Task HandleContainerImageUpdate(IReadOnlyCollection<ContainerListResponse> containers,
+        ImageDescription imageDescription)
+    {
+        await PullImage(imageDescription);
+        var tasks = containers // Create a range of numbers (1 to 5)
+            .Select(container => HandleContainerImageUpdate(container, imageDescription)) // Create a task for each number
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task PullImage(ImageDescription imageDescription)
     {
         var progressHandler = new Progress<JSONMessage>(message =>
         {
@@ -31,7 +45,9 @@ public class ContainerUpdater(DockerClient dockerClient): IContainerUpdater
             FromImage = imageDescription.Name,
             Tag = imageDescription.Tag,
         }, null, progressHandler);
-
+    }
+    public async Task HandleContainerImageUpdate(ContainerListResponse container, ImageDescription imageDescription)
+    {
         var newContainerId = await ReplaceContainer(container, imageDescription);
 
         Logger.Info($"Started new container {newContainerId} running {imageDescription.Name}:{imageDescription.Tag}");
@@ -42,10 +58,10 @@ public class ContainerUpdater(DockerClient dockerClient): IContainerUpdater
         var runningContainerInspectResponse = await dockerClient.Containers.InspectContainerAsync(existingContainer.ID);
 
         var createContainerConfig = new CreateContainerParameters(runningContainerInspectResponse.Config)
-            {
-                // update image config
-                Image = $"{imageDescription.Name}:{imageDescription.Tag}"
-            };
+        {
+            // update image config
+            Image = $"{imageDescription.Name}:{imageDescription.Tag}"
+        };
 
         string? newContainerId = null;
 

@@ -15,7 +15,7 @@ class Program {
         builder.Services.AddTransient<ILookout, Lookout.Runner.Lookout>();
         builder.Services.AddTransient<IQueueListener, QueueListener>();
         builder.Services.AddTransient<IContainerUpdater, ContainerUpdater>();
-        builder.Services.AddTransient<DockerClient>(_ => new DockerClientConfiguration().CreateClient());
+        builder.Services.AddTransient<IDockerClient>(_ => new DockerClientConfiguration().CreateClient());
 
         using IHost host = builder.Build();
 

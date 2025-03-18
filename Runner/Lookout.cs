@@ -22,7 +22,7 @@ public class Lookout(IDockerClient dockerClient, IQueueListener queueListener, I
 
     public async Task Start()
     {
-        queueListener.StartListening("fakequeuearn", this);
+        await queueListener.StartListening("fakequeuearn", this);
         Console.ReadKey();
         // keep the program alive
     }

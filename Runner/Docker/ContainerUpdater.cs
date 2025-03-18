@@ -69,7 +69,7 @@ public class ContainerUpdater(IDockerClient dockerClient): IContainerUpdater
         {
             var createContainerResponse = await dockerClient.Containers.CreateContainerAsync(createContainerConfig);
             Logger.Debug($"Created new container id: {createContainerResponse.ID}");
-            dockerClient.Containers.KillContainerAsync(existingContainer.ID, new ContainerKillParameters());
+            await dockerClient.Containers.KillContainerAsync(existingContainer.ID, new ContainerKillParameters());
             Logger.Debug($"Killed old container id: {existingContainer.ID}");
             var result = await dockerClient.Containers.StartContainerAsync(createContainerResponse.ID, new ContainerStartParameters());
             if (!result)
@@ -87,7 +87,7 @@ public class ContainerUpdater(IDockerClient dockerClient): IContainerUpdater
                 newContainerId = createContainerResponse.ID;
                 Logger.Debug($"Container {existingContainer.ID} killed");
                 Logger.Debug($"Removing container {existingContainer.ID}");
-                dockerClient.Containers.RemoveContainerAsync(existingContainer.ID, new ContainerRemoveParameters());
+                await dockerClient.Containers.RemoveContainerAsync(existingContainer.ID, new ContainerRemoveParameters());
             }
         }
         catch (Exception ex)

@@ -7,7 +7,7 @@ using Moq;
 namespace Lookout.Tests;
 using Runner;
 
-public class LookoutTest
+public class MessageProcessorTest
 {
     private readonly Mock<IDockerClient> _dockerClient = new();
     private readonly Mock<IQueueListener> _queueListener = new();
@@ -23,16 +23,21 @@ public class LookoutTest
     private readonly ImageDescription _containerImageDescriptionTwo = new("containerTwo", "4");
     private readonly string _containerIdTwo = "eebydeebydeeby";
 
-    public LookoutTest()
+    public MessageProcessorTest()
     {
         SetupListContainersAsync(GetMockContainerListResponse(_containerImageOne, _containerNameOne, 10));
         SetupContainerUpdater(TimeSpan.FromSeconds(1));
     }
 
+    // Test cases
+    // Multiple messages coming in with the same container
+    // Mupltiple messages coming in with different containers
+    // Multiple containers matching the same message
+
     [Fact]
     public async Task It_doesnt_attempt_to_update_one_container_multiple_times()
     {
-        var lookout = new Lookout(
+        var lookout = new MessageProcessor(
             _dockerClient.Object,
             _queueListener.Object,
             _containerUpdater.Object);
@@ -46,6 +51,25 @@ public class LookoutTest
             It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
             It.IsAny<ImageDescription>()), Times.Once);
     }
+
+    [Fact]
+    public async Task It_can_update_multiple_containers_from_different_messages()
+    {
+        var lookout = new MessageProcessor(
+            _dockerClient.Object,
+            _queueListener.Object,
+            _containerUpdater.Object);
+
+        lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
+        lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
+
+        await Task.Delay(TimeSpan.FromSeconds(5));
+
+        _containerUpdater.Verify(x => x.HandleContainerImageUpdate(
+            It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
+            It.IsAny<ImageDescription>()), Times.Once);
+    }
+
 
     private void SetupListContainersAsync(List<ContainerListResponse> containers)
     {

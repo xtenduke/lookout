@@ -7,12 +7,12 @@ using Lookout.Runner.Listener;
 
 namespace Lookout.Runner;
 
-public interface ILookout
+public interface IMessageProcessor
 {
     public Task Start();
 }
 
-public class Lookout(IDockerClient dockerClient, IQueueListener queueListener, IContainerUpdater containerUpdater) : IQueueListenerDelegate, ILookout
+public class MessageProcessor(IDockerClient dockerClient, IQueueListener queueListener, IContainerUpdater containerUpdater) : IQueueListenerDelegate, IMessageProcessor
 {
     private static readonly ConcurrentDictionary<string, DateTime> MessageCache = new();
     // I should be something like 30s * the number of containers I expect are running

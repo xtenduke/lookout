@@ -12,14 +12,14 @@ class Program {
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.AddTransient<ILookout, Lookout.Runner.Lookout>();
+        builder.Services.AddTransient<IMessageProcessor, Lookout.Runner.MessageProcessor>();
         builder.Services.AddTransient<IQueueListener, QueueListener>();
         builder.Services.AddTransient<IContainerUpdater, ContainerUpdater>();
         builder.Services.AddTransient<IDockerClient>(_ => new DockerClientConfiguration().CreateClient());
 
         using IHost host = builder.Build();
 
-        var lookout = host.Services.GetRequiredService<ILookout>();
+        var lookout = host.Services.GetRequiredService<IMessageProcessor>();
         await lookout.Start();
     }
 }

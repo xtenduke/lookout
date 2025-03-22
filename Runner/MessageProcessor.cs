@@ -20,9 +20,7 @@ public class MessageProcessor(
     ILogger<MessageProcessor> logger) : IQueueListenerDelegate, IMessageProcessor
 {
     private static readonly ConcurrentDictionary<string, DateTime> MessageCache = new();
-    // I should be something like 30s * the number of containers I expect are running
-    // Maybe instead we should be dispatching an async event per running container
-    // Doesn't really make much sense
+    // This should come from the message - some images will take longer than others
     private static readonly TimeSpan MaxExecutionTime = TimeSpan.FromSeconds(30);
 
     public async Task Start()
@@ -37,8 +35,6 @@ public class MessageProcessor(
         var cancellationTokenSource = new CancellationTokenSource();
         if (!MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow)) return;
 
-        // TODO: get max execution time from message
-        // this should userconfigurable
         cancellationTokenSource.CancelAfter(MaxExecutionTime);
         _ = Task.Run(async () =>
         {

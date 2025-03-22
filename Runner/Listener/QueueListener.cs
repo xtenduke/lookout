@@ -23,7 +23,7 @@ public class QueueListener : IQueueListener
         _queueListeners[queue] = listeners;
 
         // Test code
-        EmitFakeMessages();
+        await EmitFakeMessages();
     }
 
 
@@ -37,6 +37,6 @@ public class QueueListener : IQueueListener
             }
         }
         await Task.Delay(TimeSpan.FromSeconds(30));
-        EmitFakeMessages();
+        await EmitFakeMessages();
     }
 }

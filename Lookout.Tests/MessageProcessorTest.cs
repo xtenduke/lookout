@@ -2,6 +2,8 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using Lookout.Runner.Docker;
 using Lookout.Runner.Listener;
+using Lookout.Tests.Mocks;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace Lookout.Tests;
@@ -12,6 +14,7 @@ public class MessageProcessorTest
     private readonly Mock<IDockerClient> _dockerClient = new();
     private readonly Mock<IQueueListener> _queueListener = new();
     private readonly Mock<IContainerUpdater> _containerUpdater = new();
+    private readonly Mock<ILogger<MessageProcessor>> _logger = new();
 
     private readonly string _containerNameOne = "containerOne";
     private readonly string _containerImageOne = "container:9";
@@ -25,7 +28,7 @@ public class MessageProcessorTest
 
     public MessageProcessorTest()
     {
-        SetupListContainersAsync(GetMockContainerListResponse(_containerImageOne, _containerNameOne, 10));
+        SetupListContainersAsync(DockerMocks.GetMockContainerListResponse(_containerImageOne, _containerNameOne, 10));
         SetupContainerUpdater(TimeSpan.FromSeconds(1));
     }
 
@@ -35,12 +38,13 @@ public class MessageProcessorTest
     // Multiple containers matching the same message
 
     [Fact]
-    public async Task It_doesnt_attempt_to_update_one_container_multiple_times()
+    public async Task It_doesnt_attempt_to_update_one_image_multiple_times()
     {
         var lookout = new MessageProcessor(
             _dockerClient.Object,
             _queueListener.Object,
-            _containerUpdater.Object);
+            _containerUpdater.Object,
+            _logger.Object);
 
         lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
         lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
@@ -58,7 +62,8 @@ public class MessageProcessorTest
         var lookout = new MessageProcessor(
             _dockerClient.Object,
             _queueListener.Object,
-            _containerUpdater.Object);
+            _containerUpdater.Object,
+            _logger.Object);
 
         lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
         lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
@@ -85,14 +90,5 @@ public class MessageProcessorTest
                It.IsAny<ImageDescription>()))
             .Returns(Task.CompletedTask)
             .Returns(async () => await Task.Delay(delay, CancellationToken.None));
-    }
-
-    private List<ContainerListResponse> GetMockContainerListResponse(string imageName, string containerName, int count = 1)
-    {
-        return Enumerable.Range(0, count).ToList().Select(x => new ContainerListResponse
-        {
-            Image = imageName,
-            Names = [$"{containerName}-{x}"]
-        }).ToList();
     }
 }

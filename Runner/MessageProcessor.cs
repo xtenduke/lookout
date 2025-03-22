@@ -4,6 +4,7 @@ using Docker.DotNet.Models;
 using Lookout.Runner.Docker;
 using Lookout.Runner.Util;
 using Lookout.Runner.Listener;
+using Microsoft.Extensions.Logging;
 
 namespace Lookout.Runner;
 
@@ -12,7 +13,11 @@ public interface IMessageProcessor
     public Task Start();
 }
 
-public class MessageProcessor(IDockerClient dockerClient, IQueueListener queueListener, IContainerUpdater containerUpdater) : IQueueListenerDelegate, IMessageProcessor
+public class MessageProcessor(
+    IDockerClient dockerClient,
+    IQueueListener queueListener,
+    IContainerUpdater containerUpdater,
+    ILogger<MessageProcessor> logger) : IQueueListenerDelegate, IMessageProcessor
 {
     private static readonly ConcurrentDictionary<string, DateTime> MessageCache = new();
     // I should be something like 30s * the number of containers I expect are running
@@ -61,7 +66,7 @@ public class MessageProcessor(IDockerClient dockerClient, IQueueListener queueLi
 
         if (matchingContainers.Count() == 0)
         {
-            Logger.Error($"Found no containers running {newImageDescription.Name} for update to {newImageDescription.Name}:{newImageDescription.Tag}");
+            logger.LogError($"Found no containers running {newImageDescription.Name} for update to {newImageDescription.Name}:{newImageDescription.Tag}");
         }
 
         var matchingOutdatedContainers = matchingContainers.Where(container =>
@@ -70,12 +75,12 @@ public class MessageProcessor(IDockerClient dockerClient, IQueueListener queueLi
         var upToDateContainers = matchingContainers.Except(matchingOutdatedContainers).ToList();
         if (upToDateContainers.Count() > 0)
         {
-            Logger.Debug($"Found containers running correct image: ${upToDateContainers.Select(x => $"{x.ID}\n")}");
+            logger.LogDebug($"Found containers running correct image: ${upToDateContainers.Select(x => $"{x.ID}\n")}");
         }
 
         if (matchingOutdatedContainers.Count() > 0)
         {
-            Logger.Debug($"Found containers running outdated image: ${matchingOutdatedContainers.Select(x => $"{x.ID}\n")}");
+            logger.LogDebug($"Found containers running outdated image: ${matchingOutdatedContainers.Select(x => $"{x.ID}\n")}");
             await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription);
         }
     }

@@ -4,6 +4,7 @@ using Lookout.Runner.Docker;
 using Lookout.Runner.Listener;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace lookout;
 
@@ -16,6 +17,8 @@ class Program {
         builder.Services.AddTransient<IQueueListener, QueueListener>();
         builder.Services.AddTransient<IContainerUpdater, ContainerUpdater>();
         builder.Services.AddTransient<IDockerClient>(_ => new DockerClientConfiguration().CreateClient());
+        builder.Services.AddLogging(configure => configure.AddConsole())
+            .Configure<LoggerFilterOptions>(options => options.MinLevel = LogLevel.Information);
 
         using IHost host = builder.Build();
 

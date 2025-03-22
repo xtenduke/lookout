@@ -8,7 +8,10 @@ namespace Lookout.Runner.Docker;
 
 public interface IContainerUpdater
 {
-    public Task HandleContainerImageUpdate(IReadOnlyCollection<ContainerListResponse> containers, ImageDescription imageDescription);
+    public Task HandleContainerImageUpdate(
+        IReadOnlyCollection<ContainerListResponse> containers,
+        ImageDescription imageDescription,
+        CancellationToken cancellationToken);
 }
 
 public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdater> logger): IContainerUpdater
@@ -17,17 +20,18 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
     // Trust the caller to send good container data
     // Also trust the caller to be concurrent aware
     public async Task HandleContainerImageUpdate(IReadOnlyCollection<ContainerListResponse> containers,
-        ImageDescription imageDescription)
+        ImageDescription imageDescription,
+        CancellationToken cancellationToken)
     {
-        await PullImage(imageDescription);
+        await PullImage(imageDescription, cancellationToken);
         var tasks = containers // Create a range of numbers (1 to 5)
-            .Select(container => ReplaceContainer(container, imageDescription)) // Create a task for each number
+            .Select(container => ReplaceContainer(container, imageDescription, cancellationToken)) // Create a task for each number
             .ToArray();
 
         await Task.WhenAll(tasks);
     }
 
-    private async Task PullImage(ImageDescription imageDescription)
+    private async Task PullImage(ImageDescription imageDescription, CancellationToken cancellationToken)
     {
         var progressHandler = new Progress<JSONMessage>(message =>
         {
@@ -45,12 +49,17 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
         {
             FromImage = imageDescription.Name,
             Tag = imageDescription.Tag,
-        }, null, progressHandler);
+        }, null, progressHandler, cancellationToken);
     }
 
-    private async Task<string?> ReplaceContainer(ContainerListResponse existingContainer, ImageDescription imageDescription)
+    private async Task<string?> ReplaceContainer(
+        ContainerListResponse existingContainer,
+        ImageDescription imageDescription,
+        CancellationToken cancellationToken)
     {
-        var runningContainerInspectResponse = await dockerClient.Containers.InspectContainerAsync(existingContainer.ID);
+        var runningContainerInspectResponse = await dockerClient.Containers.InspectContainerAsync(
+            existingContainer.ID,
+            cancellationToken);
 
         var createContainerConfig = new CreateContainerParameters(runningContainerInspectResponse.Config)
         {
@@ -62,16 +71,31 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
 
         try
         {
-            var createContainerResponse = await dockerClient.Containers.CreateContainerAsync(createContainerConfig);
+            var createContainerResponse = await dockerClient.Containers.CreateContainerAsync(
+                createContainerConfig,
+                cancellationToken);
             logger.LogDebug($"Created new container id: {createContainerResponse.ID}");
-            await dockerClient.Containers.KillContainerAsync(existingContainer.ID, new ContainerKillParameters());
+
+            await dockerClient.Containers.KillContainerAsync(
+                existingContainer.ID,
+                new ContainerKillParameters(),
+                cancellationToken);
             logger.LogDebug($"Killed old container id: {existingContainer.ID}");
-            var result = await dockerClient.Containers.StartContainerAsync(createContainerResponse.ID, new ContainerStartParameters());
+
+            var result = await dockerClient.Containers.StartContainerAsync(
+                createContainerResponse.ID,
+                new ContainerStartParameters(),
+                cancellationToken);
+
             if (!result)
             {
                 logger.LogError("Failed to bring up new container");
                 logger.LogInformation("Bringing up old container");
-                var fallbackResult = await dockerClient.Containers.StartContainerAsync(existingContainer.ID, new ContainerStartParameters());
+                var fallbackResult = await dockerClient.Containers.StartContainerAsync(
+                    existingContainer.ID,
+                    new ContainerStartParameters(),
+                    cancellationToken);
+
                 if (!fallbackResult)
                 {
                     logger.LogCritical("Failed to bring up old container... Oops");
@@ -82,7 +106,10 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
                 newContainerId = createContainerResponse.ID;
                 logger.LogInformation($"Container {existingContainer.ID} killed");
                 logger.LogInformation($"Removing container {existingContainer.ID}");
-                await dockerClient.Containers.RemoveContainerAsync(existingContainer.ID, new ContainerRemoveParameters());
+                await dockerClient.Containers.RemoveContainerAsync(
+                    existingContainer.ID,
+                    new ContainerRemoveParameters(),
+                    cancellationToken);
             }
         }
         catch (Exception ex)

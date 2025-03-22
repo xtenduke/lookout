@@ -23,7 +23,7 @@ public class MessageProcessor(
     // I should be something like 30s * the number of containers I expect are running
     // Maybe instead we should be dispatching an async event per running container
     // Doesn't really make much sense
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaxExecutionTime = TimeSpan.FromSeconds(30);
 
     public async Task Start()
     {
@@ -34,28 +34,30 @@ public class MessageProcessor(
 
     public void OnReceived(QueueMessage message)
     {
-        if (MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow))
+        var cancellationTokenSource = new CancellationTokenSource();
+        if (!MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow)) return;
+
+        // TODO: get max execution time from message
+        // this should userconfigurable
+        cancellationTokenSource.CancelAfter(MaxExecutionTime);
+        _ = Task.Run(async () =>
         {
-            _ = Task.Run(async () =>
+            try
             {
-                try
-                {
-                    await ProcessMessage(message);
-                }
-                finally
-                {
-                    // Remove the message from cache after the cache duration
-                    await Task.Delay(CacheDuration);
-                    MessageCache.TryRemove(message.ImageDescription.Name, out _);
-                }
-            });
-        }
+                await ProcessMessage(message, cancellationTokenSource.Token);
+            }
+            finally
+            {
+                MessageCache.TryRemove(message.ImageDescription.Name, out _);
+                cancellationTokenSource.Dispose();
+            }
+        }, cancellationTokenSource.Token);
     }
 
-    private async Task ProcessMessage(QueueMessage message)
+    private async Task ProcessMessage(QueueMessage message, CancellationToken cancellationToken)
     {
         var listParameters = new ContainersListParameters();
-        var containers = await dockerClient.Containers.ListContainersAsync(listParameters);
+        var containers = await dockerClient.Containers.ListContainersAsync(listParameters, cancellationToken);
         var newImageDescription = message.ImageDescription;
 
         var matchingContainers = containers.Where(x =>
@@ -64,7 +66,7 @@ public class MessageProcessor(
             return localContainerImageName == newImageDescription.Name;
         }).ToList();
 
-        if (matchingContainers.Count() == 0)
+        if (matchingContainers.Count == 0)
         {
             logger.LogError($"Found no containers running {newImageDescription.Name} for update to {newImageDescription.Name}:{newImageDescription.Tag}");
         }
@@ -73,15 +75,15 @@ public class MessageProcessor(
             DockerUtil.GetImageTagFromImageDescription(container.Image) != newImageDescription.Tag).ToList();
 
         var upToDateContainers = matchingContainers.Except(matchingOutdatedContainers).ToList();
-        if (upToDateContainers.Count() > 0)
+        if (upToDateContainers.Count > 0)
         {
             logger.LogDebug($"Found containers running correct image: ${upToDateContainers.Select(x => $"{x.ID}\n")}");
         }
 
-        if (matchingOutdatedContainers.Count() > 0)
+        if (matchingOutdatedContainers.Count > 0)
         {
             logger.LogDebug($"Found containers running outdated image: ${matchingOutdatedContainers.Select(x => $"{x.ID}\n")}");
-            await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription);
+            await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription, cancellationToken);
         }
     }
 }

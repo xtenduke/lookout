@@ -26,7 +26,7 @@ public class MessageProcessorTest
     private readonly ImageDescription _containerImageDescriptionTwo = new("containerTwo", "4");
     private readonly string _containerIdTwo = "eebydeebydeeby";
 
-    public MessageProcessorTest()
+    private void SetupMocks()
     {
         SetupListContainersAsync(DockerMocks.GetMockContainerListResponse(_containerImageOne, _containerNameOne, 10));
         SetupContainerUpdater(TimeSpan.FromSeconds(1));
@@ -40,6 +40,8 @@ public class MessageProcessorTest
     [Fact]
     public async Task It_doesnt_attempt_to_update_one_image_multiple_times()
     {
+        SetupMocks();
+
         var lookout = new MessageProcessor(
             _dockerClient.Object,
             _queueListener.Object,
@@ -49,16 +51,18 @@ public class MessageProcessorTest
         lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
         lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
 
-        await Task.Delay(TimeSpan.FromSeconds(5));
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
 
         _containerUpdater.Verify(x => x.HandleContainerImageUpdate(
             It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
-            It.IsAny<ImageDescription>()), Times.Once);
+            It.IsAny<ImageDescription>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task It_can_update_multiple_containers_from_different_messages()
     {
+        SetupMocks();
+
         var lookout = new MessageProcessor(
             _dockerClient.Object,
             _queueListener.Object,
@@ -72,7 +76,7 @@ public class MessageProcessorTest
 
         _containerUpdater.Verify(x => x.HandleContainerImageUpdate(
             It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
-            It.IsAny<ImageDescription>()), Times.Once);
+            It.IsAny<ImageDescription>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
 
@@ -85,9 +89,9 @@ public class MessageProcessorTest
 
     private void SetupContainerUpdater(TimeSpan delay)
     {
-       _containerUpdater.SetupSequence(s => s.HandleContainerImageUpdate(
-               It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
-               It.IsAny<ImageDescription>()))
+        _containerUpdater.SetupSequence(s => s.HandleContainerImageUpdate(
+                It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
+                It.IsAny<ImageDescription>(), CancellationToken.None))
             .Returns(Task.CompletedTask)
             .Returns(async () => await Task.Delay(delay, CancellationToken.None));
     }

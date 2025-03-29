@@ -13,8 +13,8 @@ class Program {
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.AddTransient<IMessageProcessor, Lookout.Runner.MessageProcessor>();
-        builder.Services.AddTransient<IQueueListener, QueueListener>();
+        builder.Services.AddTransient<IMessageProcessor, MessageProcessor<TestProviderData>>();
+        builder.Services.AddTransient<IQueueListener<TestProviderData>, QueueListener>();
         builder.Services.AddTransient<IContainerUpdater, ContainerUpdater>();
         builder.Services.AddTransient<IDockerClient>(_ => new DockerClientConfiguration().CreateClient());
         builder.Services.AddLogging(configure => configure.AddConsole())

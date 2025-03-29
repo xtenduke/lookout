@@ -12,9 +12,9 @@ using Runner;
 public class MessageProcessorTest
 {
     private readonly Mock<IDockerClient> _dockerClient = new();
-    private readonly Mock<IQueueListener> _queueListener = new();
+    private readonly Mock<IQueueListener<TestProviderData>> _queueListener = new();
     private readonly Mock<IContainerUpdater> _containerUpdater = new();
-    private readonly Mock<ILogger<MessageProcessor>> _logger = new();
+    private readonly Mock<ILogger<MessageProcessor<TestProviderData>>> _logger = new();
 
     private readonly string _containerNameOne = "containerOne";
     private readonly string _containerImageOne = "container:9";
@@ -42,14 +42,14 @@ public class MessageProcessorTest
     {
         SetupMocks();
 
-        var lookout = new MessageProcessor(
+        var lookout = new MessageProcessor<TestProviderData>(
             _dockerClient.Object,
             _queueListener.Object,
             _containerUpdater.Object,
             _logger.Object);
 
-        lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
-        lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
+        lookout.OnReceived(CreateQueueMessage(_containerImageDescriptionOne));
+        lookout.OnReceived(CreateQueueMessage(_containerImageDescriptionOne));
 
         await Task.Delay(TimeSpan.FromMilliseconds(100));
 
@@ -63,14 +63,14 @@ public class MessageProcessorTest
     {
         SetupMocks();
 
-        var lookout = new MessageProcessor(
+        var lookout = new MessageProcessor<TestProviderData>(
             _dockerClient.Object,
             _queueListener.Object,
             _containerUpdater.Object,
             _logger.Object);
 
-        lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
-        lookout.OnReceived(new QueueMessage(_containerImageDescriptionOne));
+        lookout.OnReceived(CreateQueueMessage(_containerImageDescriptionOne));
+        lookout.OnReceived(CreateQueueMessage(_containerImageDescriptionOne));
 
         await Task.Delay(TimeSpan.FromSeconds(5));
 
@@ -79,6 +79,29 @@ public class MessageProcessorTest
             It.IsAny<ImageDescription>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task It_sends_completion_receipt()
+    {
+        SetupMocks();
+
+        var lookout = new MessageProcessor<TestProviderData>(
+            _dockerClient.Object,
+            _queueListener.Object,
+            _containerUpdater.Object,
+            _logger.Object);
+
+        var queueMessage = CreateQueueMessage(_containerImageDescriptionOne);
+
+        lookout.OnReceived(queueMessage);
+
+        await Task.Delay(TimeSpan.FromSeconds(5));
+
+        _containerUpdater.Verify(x => x.HandleContainerImageUpdate(
+            It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
+            It.IsAny<ImageDescription>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        _queueListener.Verify(x => x.ConfirmReceipt(queueMessage), Times.Once);
+    }
 
     private void SetupListContainersAsync(List<ContainerListResponse> containers)
     {
@@ -94,5 +117,15 @@ public class MessageProcessorTest
                 It.IsAny<ImageDescription>(), CancellationToken.None))
             .Returns(Task.CompletedTask)
             .Returns(async () => await Task.Delay(delay, CancellationToken.None));
+    }
+
+    private QueueMessage<TestProviderData> CreateQueueMessage(
+        ImageDescription imageDescription,
+        int count = 1, TimeSpan? deployTime = null)
+    {
+        return new QueueMessage<TestProviderData>(
+            imageDescription,
+            new TestProviderData(count),
+            deployTime);
     }
 }

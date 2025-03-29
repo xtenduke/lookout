@@ -13,11 +13,11 @@ public interface IMessageProcessor
     public Task Start();
 }
 
-public class MessageProcessor(
+public class MessageProcessor<T>(
     IDockerClient dockerClient,
-    IQueueListener queueListener,
+    IQueueListener<T> queueListener,
     IContainerUpdater containerUpdater,
-    ILogger<MessageProcessor> logger) : IQueueListenerDelegate, IMessageProcessor
+    ILogger<MessageProcessor<T>> logger) : IQueueListenerDelegate<T>, IMessageProcessor
 {
     private static readonly ConcurrentDictionary<string, DateTime> MessageCache = new();
     // This should come from the message - some images will take longer than others
@@ -30,7 +30,7 @@ public class MessageProcessor(
         // keep the program alive
     }
 
-    public void OnReceived(QueueMessage message)
+    public void OnReceived(QueueMessage<T> message)
     {
         var cancellationTokenSource = new CancellationTokenSource();
         if (!MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow)) return;
@@ -50,7 +50,7 @@ public class MessageProcessor(
         }, cancellationTokenSource.Token);
     }
 
-    private async Task ProcessMessage(QueueMessage message, CancellationToken cancellationToken)
+    private async Task ProcessMessage(QueueMessage<T> message, CancellationToken cancellationToken)
     {
         var listParameters = new ContainersListParameters();
         var containers = await dockerClient.Containers.ListContainersAsync(listParameters, cancellationToken);
@@ -81,5 +81,8 @@ public class MessageProcessor(
             logger.LogDebug($"Found containers running outdated image: ${matchingOutdatedContainers.Select(x => $"{x.ID}\n")}");
             await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription, cancellationToken);
         }
+
+        // Complete message
+        await queueListener.ConfirmReceipt(message);
     }
 }

@@ -20,8 +20,7 @@ public class MessageProcessor<T>(
     ILogger<MessageProcessor<T>> logger) : IQueueListenerDelegate<T>, IMessageProcessor
 {
     private static readonly ConcurrentDictionary<string, DateTime> MessageCache = new();
-    // This should come from the message - some images will take longer than others
-    private static readonly TimeSpan MaxExecutionTime = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultMaxExecutionTime = TimeSpan.FromSeconds(30);
 
     public async Task Start()
     {
@@ -35,7 +34,7 @@ public class MessageProcessor<T>(
         var cancellationTokenSource = new CancellationTokenSource();
         if (!MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow)) return;
 
-        cancellationTokenSource.CancelAfter(MaxExecutionTime);
+        cancellationTokenSource.CancelAfter(message.DeployTime ?? DefaultMaxExecutionTime);
         _ = Task.Run(async () =>
         {
             try

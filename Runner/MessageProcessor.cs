@@ -24,6 +24,7 @@ public class MessageProcessor<T>(
 
     public async Task Start()
     {
+        logger.LogDebug("Starting");
         await queueListener.StartListening("fakequeuearn", this);
         Console.ReadKey();
         // keep the program alive

@@ -39,6 +39,6 @@ class Program {
     private static void RegisterTestServices(IServiceCollection serviceCollection)
     {
         serviceCollection.AddTransient<IMessageProcessor, MessageProcessor<TestProviderData>>();
-        serviceCollection.AddTransient<IQueueListener<TestProviderData>, QueueListener>();
+        serviceCollection.AddTransient<IQueueListener<TestProviderData>, FakeQueueListener>();
     }
 }

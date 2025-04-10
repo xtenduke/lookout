@@ -25,7 +25,8 @@ public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener
                     if (parsedMessage == null)
                     {
                         logger.LogError($"Failed to deserialize message body");
-                        logger.LogDebug($"body: {msg.Body}");
+                        logger.LogDebug("body: {Body}", msg.Body);
+                        continue;
                     }
 
                     listener.OnReceived(parsedMessage);

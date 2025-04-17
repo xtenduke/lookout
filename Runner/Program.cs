@@ -1,4 +1,5 @@
-﻿using Docker.DotNet;
+﻿using Amazon.SQS;
+using Docker.DotNet;
 using Lookout.Runner;
 using Lookout.Runner.Docker;
 using Lookout.Runner.Listener;
@@ -17,6 +18,7 @@ class Program {
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
+        builder.Services.AddTransient<IAmazonSQS, AmazonSQSClient>();
         builder.Services.AddTransient<IMessageProcessor, MessageProcessor<SqsProviderData>>();
         builder.Services.AddTransient<IQueueListener<SqsProviderData>, SqsMessageListener>();
 

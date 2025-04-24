@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.SQS" Version="3.7.400.122" />
     <PackageReference Include="Docker.DotNet" Version="3.125.15" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.3" />
   </ItemGroup>

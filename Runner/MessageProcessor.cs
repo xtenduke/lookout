@@ -14,6 +14,7 @@ public interface IMessageProcessor
 }
 
 public class MessageProcessor<T>(
+    Config config,
     IDockerClient dockerClient,
     IQueueListener<T> queueListener,
     IContainerUpdater containerUpdater,
@@ -25,7 +26,8 @@ public class MessageProcessor<T>(
     public async Task Start()
     {
         logger.LogDebug("Starting");
-        await queueListener.StartListening("fakequeuearn", this);
+        logger.LogDebug("SQS Queue URL: {QueueUrl}", config.SqsQueueUrl);
+        await queueListener.StartListening(config.SqsQueueUrl, this);
         Console.ReadKey();
         // keep the program alive
     }

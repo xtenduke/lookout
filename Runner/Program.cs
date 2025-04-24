@@ -4,25 +4,33 @@ using Lookout.Runner;
 using Lookout.Runner.Docker;
 using Lookout.Runner.Listener;
 using Lookout.Runner.Listener.Sqs;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace lookout.Runner;
 
-class Program {
-    private static bool IsTest = true;
-    private static LogLevel LogLevel = LogLevel.Debug;
-
+class Program
+{
     public static async Task Main(String[] args)
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+
+        var configuration = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .Build();
+
+        var config = configuration.Get<Config>() ?? throw new ArgumentNullException("Missing environment variables.");
+        config.Validate();
+
+        builder.Services.AddSingleton(config);
 
         builder.Services.AddTransient<IAmazonSQS, AmazonSQSClient>();
         builder.Services.AddTransient<IMessageProcessor, MessageProcessor<SqsProviderData>>();
         builder.Services.AddTransient<IQueueListener<SqsProviderData>, SqsMessageListener>();
 
-        if (IsTest)
+        if (config.IsTest)
         {
             RegisterTestServices(builder.Services);
         }
@@ -30,7 +38,7 @@ class Program {
         builder.Services.AddTransient<IContainerUpdater, ContainerUpdater>();
         builder.Services.AddTransient<IDockerClient>(_ => new DockerClientConfiguration().CreateClient());
         builder.Services.AddLogging(configure => configure.AddConsole())
-            .Configure<LoggerFilterOptions>(options => options.MinLevel = LogLevel);
+            .Configure<LoggerFilterOptions>(options => options.MinLevel = config.LogLevel);
 
         using IHost host = builder.Build();
 

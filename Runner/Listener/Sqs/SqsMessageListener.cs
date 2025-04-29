@@ -7,11 +7,12 @@ namespace Lookout.Runner.Listener.Sqs;
 
 public record SqsProviderData(string ReceiptHandle, string MessageId);
 
-public record LookoutSqsMessageBody(string ImageName, string ImageTag, string? DeployTimeSeconds);
-
-
 public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener> logger) : IQueueListener<SqsProviderData>
 {
+    private JsonSerializerOptions _jsonSerializationOptions = new JsonSerializerOptions {
+        PropertyNameCaseInsensitive = true
+    };
+
     public Task StartListening(string queue, IQueueListenerDelegate<SqsProviderData> listener)
     {
         while (true)
@@ -43,10 +44,11 @@ public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener
     // Get a message off the queue
     private static async Task<ReceiveMessageResponse> GetMessage(IAmazonSQS sqsClient, string queue)
     {
-        return await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest {
-            QueueUrl=queue,
-            MaxNumberOfMessages=1,
-            WaitTimeSeconds=1
+        return await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
+        {
+            QueueUrl = queue,
+            MaxNumberOfMessages = 1,
+            WaitTimeSeconds = 1
         });
     }
 
@@ -60,31 +62,41 @@ public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener
         });
     }
 
-    private static QueueMessage<SqsProviderData>? ParseMessage(Message? message)
+    private QueueMessage<SqsProviderData>? ParseMessage(Message? message)
     {
         if (message == null)
         {
             return null;
         }
 
-        var body = JsonSerializer.Deserialize<LookoutSqsMessageBody>(message.Body);
-        if (body == null)
+        try
         {
+            var body = JsonSerializer.Deserialize<LookoutSqsMessageBody>(message.Body, _jsonSerializationOptions);
+            if (body == null || body.Validate() == false)
+            {
+                return null;
+            }
+
+            var imageDescription = new ImageDescription(body.ImageName, body.ImageTag);
+            var providerData = new SqsProviderData(message.ReceiptHandle, message.MessageId);
+
+            TimeSpan? deployTime = null;
+            if (body.DeployTimeSeconds != null && int.TryParse(body.DeployTimeSeconds, out var deployTimeSeconds))
+            {
+                deployTime = TimeSpan.FromSeconds(deployTimeSeconds);
+            }
+
+            return new QueueMessage<SqsProviderData>(
+                imageDescription,
+                providerData,
+                deployTime);
+
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug("Failed to parse message body: {Body}", message.Body);
+            logger.LogError(ex, "Failed to parse message");
             return null;
         }
-
-        var imageDescription = new ImageDescription(body.ImageName, body.ImageTag);
-        var providerData = new SqsProviderData(message.ReceiptHandle, message.MessageId);
-
-        TimeSpan? deployTime = null;
-        if (body.DeployTimeSeconds != null && int.TryParse(body.DeployTimeSeconds, out var deployTimeSeconds))
-        {
-            deployTime = TimeSpan.FromSeconds(deployTimeSeconds);
-        }
-
-        return new QueueMessage<SqsProviderData>(
-            imageDescription,
-            providerData,
-            deployTime);
     }
 }

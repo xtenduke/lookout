@@ -75,12 +75,12 @@ public class MessageProcessor<T>(
         var upToDateContainers = matchingContainers.Except(matchingOutdatedContainers).ToList();
         if (upToDateContainers.Count > 0)
         {
-            logger.LogDebug($"Found containers running correct image: ${upToDateContainers.Select(x => $"{x.ID}\n")}");
+            logger.LogDebug($"Found container(s) running correct image: {string.Join(',', upToDateContainers.Select(x => $"{x.ID}\n"))}");
         }
 
         if (matchingOutdatedContainers.Count > 0)
         {
-            logger.LogDebug($"Found containers running outdated image: ${matchingOutdatedContainers.Select(x => $"{x.ID}\n")}");
+            logger.LogDebug($"Found container(s) running outdated image: {string.Join(',', matchingOutdatedContainers.Select(x => $"{x.ID}\n"))}");
             await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription, cancellationToken);
         }
 

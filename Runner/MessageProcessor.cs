@@ -13,29 +13,31 @@ public interface IMessageProcessor
     public Task Start();
 }
 
-public class MessageProcessor(
+public class MessageProcessor<T>(
+    Config config,
     IDockerClient dockerClient,
-    IQueueListener queueListener,
+    IQueueListener<T> queueListener,
     IContainerUpdater containerUpdater,
-    ILogger<MessageProcessor> logger) : IQueueListenerDelegate, IMessageProcessor
+    ILogger<MessageProcessor<T>> logger) : IQueueListenerDelegate<T>, IMessageProcessor
 {
     private static readonly ConcurrentDictionary<string, DateTime> MessageCache = new();
-    // This should come from the message - some images will take longer than others
-    private static readonly TimeSpan MaxExecutionTime = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultMaxExecutionTime = TimeSpan.FromSeconds(30);
 
     public async Task Start()
     {
-        await queueListener.StartListening("fakequeuearn", this);
+        logger.LogDebug("Starting");
+        logger.LogDebug("SQS Queue URL: {QueueUrl}", config.SqsQueueUrl);
+        await queueListener.StartListening(config.SqsQueueUrl, this);
         Console.ReadKey();
         // keep the program alive
     }
 
-    public void OnReceived(QueueMessage message)
+    public void OnReceived(QueueMessage<T> message)
     {
         var cancellationTokenSource = new CancellationTokenSource();
         if (!MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow)) return;
 
-        cancellationTokenSource.CancelAfter(MaxExecutionTime);
+        cancellationTokenSource.CancelAfter(message.DeployTime ?? DefaultMaxExecutionTime);
         _ = Task.Run(async () =>
         {
             try
@@ -50,7 +52,7 @@ public class MessageProcessor(
         }, cancellationTokenSource.Token);
     }
 
-    private async Task ProcessMessage(QueueMessage message, CancellationToken cancellationToken)
+    private async Task ProcessMessage(QueueMessage<T> message, CancellationToken cancellationToken)
     {
         var listParameters = new ContainersListParameters();
         var containers = await dockerClient.Containers.ListContainersAsync(listParameters, cancellationToken);
@@ -73,13 +75,16 @@ public class MessageProcessor(
         var upToDateContainers = matchingContainers.Except(matchingOutdatedContainers).ToList();
         if (upToDateContainers.Count > 0)
         {
-            logger.LogDebug($"Found containers running correct image: ${upToDateContainers.Select(x => $"{x.ID}\n")}");
+            logger.LogDebug($"Found container(s) running correct image: {string.Join(',', upToDateContainers.Select(x => $"{x.ID}\n"))}");
         }
 
         if (matchingOutdatedContainers.Count > 0)
         {
-            logger.LogDebug($"Found containers running outdated image: ${matchingOutdatedContainers.Select(x => $"{x.ID}\n")}");
+            logger.LogDebug($"Found container(s) running outdated image: {string.Join(',', matchingOutdatedContainers.Select(x => $"{x.ID}\n"))}");
             await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription, cancellationToken);
         }
+
+        // Complete message
+        await queueListener.ConfirmReceipt(message);
     }
 }

@@ -25,11 +25,16 @@ public class MessageProcessorTest
     private readonly string _containerImageTwo = "containerTwo:3";
     private readonly ImageDescription _containerImageDescriptionTwo = new("containerTwo", "4");
     private readonly string _containerIdTwo = "eebydeebydeeby";
+    private Config _configMock;
 
     private void SetupMocks()
     {
         SetupListContainersAsync(DockerMocks.GetMockContainerListResponse(_containerImageOne, _containerNameOne, 10));
         SetupContainerUpdater(TimeSpan.FromSeconds(1));
+        _configMock = new Config()
+        {
+            SqsQueueUrl = "testqueueurl",
+        };
     }
 
     // Test cases
@@ -43,6 +48,7 @@ public class MessageProcessorTest
         SetupMocks();
 
         var lookout = new MessageProcessor<TestProviderData>(
+            _configMock,
             _dockerClient.Object,
             _queueListener.Object,
             _containerUpdater.Object,
@@ -64,6 +70,7 @@ public class MessageProcessorTest
         SetupMocks();
 
         var lookout = new MessageProcessor<TestProviderData>(
+            _configMock,
             _dockerClient.Object,
             _queueListener.Object,
             _containerUpdater.Object,
@@ -85,6 +92,7 @@ public class MessageProcessorTest
         SetupMocks();
 
         var lookout = new MessageProcessor<TestProviderData>(
+            _configMock,
             _dockerClient.Object,
             _queueListener.Object,
             _containerUpdater.Object,

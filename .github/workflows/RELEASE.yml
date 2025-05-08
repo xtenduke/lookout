@@ -1,0 +1,46 @@
+name: .NET Release
+
+on:
+  push:
+    branches: [ ci ]
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install NBGV
+        run: dotnet tool install -g nbgv
+
+      - name: Generate Version
+        run: nbgv get-version
+
+      - name: Build and Test
+        run: dotnet build --configuration Release
+
+      - name: Tag and Push Version
+        env:
+          VERSION: $(nbgv get-version --quiet | jq -r .simpleVersion)
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: "Release ${{ steps.nbgv.outputs.version }}"
+          tag: "v${{ steps.nbgv.outputs.version }}"
+          body: "Automated release for version ${{ steps.nbgv.outputs.version }}"

@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "publicReleaseRefSpec": [
+    "^refs/heads/main$",
+    "^refs/tags/v\\d+\\.\\d+"
+  ],
+  "gitCommitIdShortFixedLength": 8,
+  "semVer1NumericIdentifierPadding": 3,
+  "cloudBuild": {
+    "setAllVariables": true,
+    "buildNumber": {
+      "enabled": true
+    }
+  }
+}

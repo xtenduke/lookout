@@ -31,13 +31,12 @@ jobs:
         run: dotnet build --configuration Release
 
       - name: Tag and Push Version
-        env:
-          VERSION: $(nbgv get-version --quiet | jq -r .simpleVersion)
         run: |
+          VERSION=$(nbgv get-version --quiet | jq -r .simpleVersion)
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git tag "v$VERSION"
-          git push origin "v$VERSION"a
+          git push origin "v$VERSION"
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:

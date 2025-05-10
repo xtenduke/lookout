@@ -5,9 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [ ci ]
-    tags:
-      - 'v*.*.*'
+    branches: [ main ]
 
 jobs:
   release:
@@ -24,18 +22,19 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Install NBGV
-        run: dotnet tool install -g nbgv
-
-      - name: Generate Version
-        run: nbgv get-version
-
       - name: Build and Test
         run: dotnet build --configuration Release
 
+      - name: Get Next Version
+        id: semver
+        uses: ietf-tools/semver-action@v1
+        with:
+          token: ${{ github.token }}
+          branch: main
+
       - name: Tag and Push Version
         run: |
-          VERSION=$(nbgv get-version --quiet | jq -r .simpleVersion)
+          VERSION=${{ steps.semver.outputs.next }}
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git tag "v$VERSION"
@@ -58,5 +57,5 @@ jobs:
           context: ./backend
           push: true
           tags: |
-              ${{ env.REGISTRY }}/lookout:${{ steps.vars.outputs.tag }}
+              ${{ env.REGISTRY }}/lookout:${{ steps.semver.outputs.next }}
               ${{ env.REGISTRY }}/lookout:latest

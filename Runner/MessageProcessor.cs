@@ -34,6 +34,7 @@ public class MessageProcessor<T>(
 
     public void OnReceived(QueueMessage<T> message)
     {
+        logger.LogDebug("Received message for imageName: {ImageName}:{TagName}", message.ImageDescription.Name, message.ImageDescription.Tag);
         var cancellationTokenSource = new CancellationTokenSource();
         if (!MessageCache.TryAdd(message.ImageDescription.Name, DateTime.UtcNow)) return;
 
@@ -54,6 +55,7 @@ public class MessageProcessor<T>(
 
     private async Task ProcessMessage(QueueMessage<T> message, CancellationToken cancellationToken)
     {
+        logger.LogDebug("Processing message for imageName: {ImageName}:{TagName}", message.ImageDescription.Name, message.ImageDescription.Tag);
         var listParameters = new ContainersListParameters();
         var containers = await dockerClient.Containers.ListContainersAsync(listParameters, cancellationToken);
         var newImageDescription = message.ImageDescription;

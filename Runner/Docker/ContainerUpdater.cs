@@ -45,11 +45,11 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
             {
                 if (!string.IsNullOrEmpty(message.ProgressMessage))
                 {
-                    logger.LogDebug("Image Pull Progress: {0}", message.ProgressMessage);
+                    logger.LogDebug("Image Pull Progress: {Message}", message.ProgressMessage);
                 }
                 else if (!string.IsNullOrEmpty(message.Status))
                 {
-                    logger.LogDebug("Image Pull Status: {0}", message.Status);
+                    logger.LogDebug("Image Pull Status: {Status}", message.Status);
                 }
             });
 
@@ -89,13 +89,13 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
             var createContainerResponse = await dockerClient.Containers.CreateContainerAsync(
                 createContainerConfig,
                 cancellationToken);
-            logger.LogDebug($"Created new container id: {createContainerResponse.ID}");
+            logger.LogDebug("Created new container id: {id}", createContainerResponse.ID);
 
             await dockerClient.Containers.KillContainerAsync(
                 existingContainer.ID,
                 new ContainerKillParameters(),
                 cancellationToken);
-            logger.LogDebug($"Killed old container id: {existingContainer.ID}");
+            logger.LogDebug("Killed old container id: {id}", existingContainer.ID);
 
             var result = await dockerClient.Containers.StartContainerAsync(
                 createContainerResponse.ID,
@@ -119,8 +119,8 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
             else
             {
                 newContainerId = createContainerResponse.ID;
-                logger.LogInformation($"Container {existingContainer.ID} killed");
-                logger.LogInformation($"Removing container {existingContainer.ID}");
+                logger.LogInformation("Container {id} killed", existingContainer.ID);
+                logger.LogInformation("Removing container {id}", existingContainer.ID);
                 await dockerClient.Containers.RemoveContainerAsync(
                     existingContainer.ID,
                     new ContainerRemoveParameters(),
@@ -129,10 +129,10 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
         }
         catch (Exception ex)
         {
-            logger.LogCritical($"Failed to create new container with message: {ex.Message}");
+            logger.LogCritical("Failed to create new container with message: {message}", ex.Message);
         }
 
-        logger.LogInformation($"Started new container {newContainerId} running {imageDescription.Name}:{imageDescription.Tag}");
+        logger.LogInformation("Started new container {newId} running {name}:{tag}", newContainerId, imageDescription.Name, imageDescription.Tag);
         return newContainerId;
     }
 }

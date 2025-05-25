@@ -99,6 +99,28 @@ public class ContainerUpdaterTest
             It.IsAny<CancellationToken>()), Times.Exactly(times));
     }
 
+    [Fact]
+    public async Task It_doesnt_try_to_create_container_when_pull_fails() {
+        SetupCreateImageAsync(false);
+
+        var containersToReplace = CreateContainersToReplace(1);
+        var sut = new ContainerUpdater(_dockerClientMock.Object, _loggerMock.Object);
+        var imageDescription = new ImageDescription("redis", "7");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => 
+            sut.HandleContainerImageUpdate(containersToReplace, imageDescription, CancellationToken.None));
+
+        _dockerClientMock.Verify(x => x.Images.CreateImageAsync(
+            It.IsAny<ImagesCreateParameters>(),
+            It.IsAny<AuthConfig>(),
+            It.IsAny<Progress<JSONMessage>>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _dockerClientMock.Verify(x => x.Containers.CreateContainerAsync(
+            It.IsAny<CreateContainerParameters>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private void SetupCreateImageAsync(bool success, int timeSeconds = 2)
     {
         var time = TimeSpan.FromSeconds(timeSeconds);

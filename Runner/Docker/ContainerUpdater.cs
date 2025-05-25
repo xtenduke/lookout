@@ -23,7 +23,11 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
         ImageDescription imageDescription,
         CancellationToken cancellationToken)
     {
-        await PullImage(imageDescription, cancellationToken);
+        var result = await PullImage(imageDescription, cancellationToken);
+
+        if (!result)
+            return;
+
         var tasks = containers // Create a range of numbers (1 to 5)
             .Select(container => ReplaceContainer(container, imageDescription, cancellationToken)) // Create a task for each number
             .ToArray();
@@ -31,25 +35,34 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
         await Task.WhenAll(tasks);
     }
 
-    private async Task PullImage(ImageDescription imageDescription, CancellationToken cancellationToken)
+    private async Task<bool> PullImage(ImageDescription imageDescription, CancellationToken cancellationToken)
     {
-        var progressHandler = new Progress<JSONMessage>(message =>
+        try
         {
-            if (!string.IsNullOrEmpty(message.ProgressMessage))
+            var progressHandler = new Progress<JSONMessage>(message =>
             {
-                logger.LogDebug("Image Pull Progress: {0}", message.ProgressMessage);
-            }
-            else if (!string.IsNullOrEmpty(message.Status))
-            {
-                logger.LogDebug("Image Pull Status: {0}", message.Status);
-            }
-        });
+                if (!string.IsNullOrEmpty(message.ProgressMessage))
+                {
+                    logger.LogDebug("Image Pull Progress: {0}", message.ProgressMessage);
+                }
+                else if (!string.IsNullOrEmpty(message.Status))
+                {
+                    logger.LogDebug("Image Pull Status: {0}", message.Status);
+                }
+            });
 
-        await dockerClient.Images.CreateImageAsync(new ImagesCreateParameters()
+            await dockerClient.Images.CreateImageAsync(new ImagesCreateParameters()
+            {
+                FromImage = imageDescription.Name,
+                Tag = imageDescription.Tag,
+            }, null, progressHandler, cancellationToken);
+        } catch (DockerApiException ex)
         {
-            FromImage = imageDescription.Name,
-            Tag = imageDescription.Tag,
-        }, null, progressHandler, cancellationToken);
+            logger.LogError("Failed to pull image {ImageName}:{TagName} - error {Error}", imageDescription.Name, imageDescription.Tag, ex.Message);
+            return false;
+        }
+
+        return true;
     }
 
     private async Task<string?> ReplaceContainer(

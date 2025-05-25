@@ -25,12 +25,12 @@ public class MessageProcessorTest
     private readonly string _containerImageTwo = "containerTwo:3";
     private readonly ImageDescription _containerImageDescriptionTwo = new("containerTwo", "4");
     private readonly string _containerIdTwo = "eebydeebydeeby";
-    private Config _configMock;
+    private readonly Config _configMock;
 
-    private void SetupMocks()
+    public MessageProcessorTest()
     {
         SetupListContainersAsync(DockerMocks.GetMockContainerListResponse(_containerImageOne, _containerNameOne, 10));
-        SetupContainerUpdater(TimeSpan.FromSeconds(1));
+        SetupContainerUpdater(TimeSpan.FromSeconds(1), true);
         _configMock = new Config()
         {
             SqsQueueUrl = "testqueueurl",
@@ -45,8 +45,6 @@ public class MessageProcessorTest
     [Fact]
     public async Task It_doesnt_attempt_to_update_one_image_multiple_times()
     {
-        SetupMocks();
-
         var lookout = new MessageProcessor<TestProviderData>(
             _configMock,
             _dockerClient.Object,
@@ -67,8 +65,6 @@ public class MessageProcessorTest
     [Fact]
     public async Task It_can_update_multiple_containers_from_different_messages()
     {
-        SetupMocks();
-
         var lookout = new MessageProcessor<TestProviderData>(
             _configMock,
             _dockerClient.Object,
@@ -89,8 +85,6 @@ public class MessageProcessorTest
     [Fact]
     public async Task It_sends_completion_receipt()
     {
-        SetupMocks();
-
         var lookout = new MessageProcessor<TestProviderData>(
             _configMock,
             _dockerClient.Object,
@@ -111,6 +105,31 @@ public class MessageProcessorTest
         _queueListener.Verify(x => x.ConfirmReceipt(queueMessage), Times.Once);
     }
 
+    [Fact]
+    public async Task It_doesnt_send_completion_if_not_all_succeeded()
+    {
+        SetupContainerUpdater(TimeSpan.FromSeconds(1), false);
+
+        var lookout = new MessageProcessor<TestProviderData>(
+            _configMock,
+            _dockerClient.Object,
+            _queueListener.Object,
+            _containerUpdater.Object,
+            _logger.Object);
+
+        var queueMessage = CreateQueueMessage(_containerImageDescriptionOne);
+
+        lookout.OnReceived(queueMessage);
+
+        await Task.Delay(TimeSpan.FromSeconds(5));
+
+        _containerUpdater.Verify(x => x.HandleContainerImageUpdate(
+            It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
+            It.IsAny<ImageDescription>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        _queueListener.Verify(x => x.ConfirmReceipt(queueMessage), Times.Never);
+    }
+
     private void SetupListContainersAsync(List<ContainerListResponse> containers)
     {
         _dockerClient
@@ -118,13 +137,18 @@ public class MessageProcessorTest
                 It.IsAny<CancellationToken>())).ReturnsAsync(containers);
     }
 
-    private void SetupContainerUpdater(TimeSpan delay)
+    private void SetupContainerUpdater(TimeSpan delay, bool success = true)
     {
         _containerUpdater.SetupSequence(s => s.HandleContainerImageUpdate(
                 It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
-                It.IsAny<ImageDescription>(), CancellationToken.None))
-            .Returns(Task.CompletedTask)
-            .Returns(async () => await Task.Delay(delay, CancellationToken.None));
+                It.IsAny<ImageDescription>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(success)
+            .Returns(async () =>
+            {
+                await Task.Delay(delay, CancellationToken.None);
+                return success;
+            });
     }
 
     private QueueMessage<TestProviderData> CreateQueueMessage(

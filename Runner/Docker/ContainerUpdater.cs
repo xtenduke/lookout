@@ -8,7 +8,7 @@ namespace Lookout.Runner.Docker;
 
 public interface IContainerUpdater
 {
-    public Task HandleContainerImageUpdate(
+    public Task<bool> HandleContainerImageUpdate(
         IReadOnlyCollection<ContainerListResponse> containers,
         ImageDescription imageDescription,
         CancellationToken cancellationToken);
@@ -19,20 +19,22 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
     // Update multiple containers running the same image
     // Trust the caller to send good container data
     // Also trust the caller to be concurrent aware
-    public async Task HandleContainerImageUpdate(IReadOnlyCollection<ContainerListResponse> containers,
+    public async Task<bool> HandleContainerImageUpdate(IReadOnlyCollection<ContainerListResponse> containers,
         ImageDescription imageDescription,
         CancellationToken cancellationToken)
     {
         var result = await PullImage(imageDescription, cancellationToken);
 
         if (!result)
-            return;
+            return result;
 
-        var tasks = containers // Create a range of numbers (1 to 5)
-            .Select(container => ReplaceContainer(container, imageDescription, cancellationToken)) // Create a task for each number
+        var tasks = containers
+            .Select(container => ReplaceContainer(container, imageDescription, cancellationToken))
             .ToArray();
 
-        await Task.WhenAll(tasks);
+         var replaceResult = await Task.WhenAll(tasks);
+        return !replaceResult.Any(s => s == null);
+
     }
 
     private async Task<bool> PullImage(ImageDescription imageDescription, CancellationToken cancellationToken)

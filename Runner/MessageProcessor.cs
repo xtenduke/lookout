@@ -59,6 +59,7 @@ public class MessageProcessor<T>(
         var listParameters = new ContainersListParameters();
         var containers = await dockerClient.Containers.ListContainersAsync(listParameters, cancellationToken);
         var newImageDescription = message.ImageDescription;
+        var didUpdateContainers = false;
 
         var matchingContainers = containers.Where(x =>
         {
@@ -83,10 +84,12 @@ public class MessageProcessor<T>(
         if (matchingOutdatedContainers.Count > 0)
         {
             logger.LogDebug($"Found container(s) running outdated image: {string.Join(',', matchingOutdatedContainers.Select(x => $"{x.ID}\n"))}");
-            await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription, cancellationToken);
+            didUpdateContainers = await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription, cancellationToken);
         }
 
-        // Complete message
-        await queueListener.ConfirmReceipt(message);
+        if (didUpdateContainers)
+        {
+            await queueListener.ConfirmReceipt(message);
+        }
     }
 }

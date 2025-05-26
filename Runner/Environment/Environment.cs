@@ -6,6 +6,9 @@ public record Config
     public LogLevel LogLevel { get; init; } = LogLevel.Information;
     public bool IsTest { get; init; } = false;
 
+    public string? RegistryUsername { get; init; }
+    public string? RegistryPassword { get; init; }
+
     public void Validate()
     {
 

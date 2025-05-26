@@ -2,6 +2,7 @@ using Docker.DotNet;
 using Docker.DotNet.Models;
 using Lookout.Runner.Docker;
 using Lookout.Runner.Listener;
+using Lookout.Tests.Mocks;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -11,6 +12,8 @@ public class ContainerUpdaterTest
 {
     private readonly Mock<IDockerClient> _dockerClientMock = new();
     private readonly Mock<ILogger<ContainerUpdater>> _loggerMock = new();
+
+    private readonly Config _configMock = ConfigMock.GetConfig();
 
     private static readonly string _containerId = "5bbfb21e8d4282ed1f51ce103eea";
 
@@ -30,7 +33,7 @@ public class ContainerUpdaterTest
         var containersToReplace = CreateContainersToReplace(1);
         var containerIdToReplace= containersToReplace.First().ID;
 
-        var sut = new ContainerUpdater(_dockerClientMock.Object, _loggerMock.Object);
+        var sut = new ContainerUpdater(_dockerClientMock.Object, _configMock, _loggerMock.Object);
         var imageDescription = new ImageDescription("redis", "7");
         await sut.HandleContainerImageUpdate(containersToReplace, imageDescription, CancellationToken.None);
 
@@ -69,7 +72,7 @@ public class ContainerUpdaterTest
         var containersToReplace = CreateContainersToReplace(times);
         var containerIdsToReplace = containersToReplace.Select(x => x.ID);
 
-        var sut = new ContainerUpdater(_dockerClientMock.Object, _loggerMock.Object);
+        var sut = new ContainerUpdater(_dockerClientMock.Object, _configMock, _loggerMock.Object);
         var imageDescription = new ImageDescription("redis", "7");
         await sut.HandleContainerImageUpdate(containersToReplace, imageDescription, CancellationToken.None);
 
@@ -104,7 +107,7 @@ public class ContainerUpdaterTest
         SetupCreateImageAsync(false);
 
         var containersToReplace = CreateContainersToReplace(1);
-        var sut = new ContainerUpdater(_dockerClientMock.Object, _loggerMock.Object);
+        var sut = new ContainerUpdater(_dockerClientMock.Object, _configMock, _loggerMock.Object);
         var imageDescription = new ImageDescription("redis", "7");
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => 

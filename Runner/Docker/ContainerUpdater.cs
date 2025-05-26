@@ -1,7 +1,6 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Lookout.Runner.Listener;
-using Lookout.Runner.Util;
 using Microsoft.Extensions.Logging;
 
 namespace Lookout.Runner.Docker;
@@ -14,7 +13,7 @@ public interface IContainerUpdater
         CancellationToken cancellationToken);
 }
 
-public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdater> logger): IContainerUpdater
+public class ContainerUpdater(IDockerClient dockerClient, Config config, ILogger<ContainerUpdater> logger): IContainerUpdater
 {
     // Update multiple containers running the same image
     // Trust the caller to send good container data
@@ -39,8 +38,21 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
 
     private async Task<bool> PullImage(ImageDescription imageDescription, CancellationToken cancellationToken)
     {
-        try
-        {
+            AuthConfig? authConfig = null;
+            if (string.IsNullOrEmpty(config.RegistryUsername) || string.IsNullOrEmpty(config.RegistryPassword))
+            {
+                logger.LogDebug("No registry credentials provided, pulling public image {ImageName}:{TagName}", imageDescription.Name, imageDescription.Tag);
+            }
+            else
+            {
+                authConfig = new AuthConfig
+                {
+                    Username = config.RegistryUsername,
+                    Password = config.RegistryPassword,
+                };
+                logger.LogDebug("Pulling private image {ImageName}:{TagName} with credentials", imageDescription.Name, imageDescription.Tag);
+            }
+
             var progressHandler = new Progress<JSONMessage>(message =>
             {
                 if (!string.IsNullOrEmpty(message.ProgressMessage))
@@ -53,16 +65,24 @@ public class ContainerUpdater(IDockerClient dockerClient, ILogger<ContainerUpdat
                 }
             });
 
-            await dockerClient.Images.CreateImageAsync(new ImagesCreateParameters()
+            var imageCreateParameters = new ImagesCreateParameters()
             {
                 FromImage = imageDescription.Name,
                 Tag = imageDescription.Tag,
-            }, null, progressHandler, cancellationToken);
-        } catch (DockerApiException ex)
-        {
-            logger.LogError("Failed to pull image {ImageName}:{TagName} - error {Error}", imageDescription.Name, imageDescription.Tag, ex.Message);
-            return false;
-        }
+            };
+
+            try
+            {
+                await dockerClient.Images.CreateImageAsync(
+                    imageCreateParameters,
+                    authConfig,
+                    progressHandler,
+                    cancellationToken);
+            } catch (DockerApiException ex)
+            {
+                logger.LogError("Failed to pull image {ImageName}:{TagName} - error {Error}", imageDescription.Name, imageDescription.Tag, ex.Message);
+                return false;
+            }
 
         return true;
     }

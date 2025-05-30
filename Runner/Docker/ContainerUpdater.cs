@@ -99,7 +99,8 @@ public class ContainerUpdater(IDockerClient dockerClient, Config config, ILogger
         var createContainerConfig = new CreateContainerParameters(runningContainerInspectResponse.Config)
         {
             // update image config
-            Image = $"{imageDescription.Name}:{imageDescription.Tag}"
+            Image = $"{imageDescription.Name}:{imageDescription.Tag}",
+            HostConfig = runningContainerInspectResponse.HostConfig,
         };
 
         string? newContainerId = null;

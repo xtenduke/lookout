@@ -83,6 +83,20 @@ public class ContainerUpdaterIntegrationTest : IDisposable
 
     private async Task<string?> StartTestContainer(string containerName, string? tempFilePath, string? image = "redis:6")
     {
+
+        var progressHandler = new Progress<JSONMessage>(message => {});
+        var imageCreateParameters = new ImagesCreateParameters()
+        {
+            FromImage = "redis",
+            Tag = "6",
+        };
+
+        await _dockerClient.Images.CreateImageAsync(
+            imageCreateParameters,
+            null,
+            progressHandler,
+            CancellationToken.None);
+
         List<Mount> mounts = new();
         if (tempFilePath != null)
         {

@@ -21,7 +21,7 @@ public interface IContainerUpdater
 public record ContainerImageUpdateResult(bool Success, List<string?>? Ids);
 public record RunningContainersResult(List<ContainerListResponse> OutdatedContainers, List<ContainerListResponse> UpToDateContainers);
 
-public class ContainerUpdater(IDockerClient dockerClient, Config config, ILogger<ContainerUpdater> logger): IContainerUpdater
+public class ContainerUpdater(IDockerClient dockerClient, Config config, ILogger<ContainerUpdater> logger) : IContainerUpdater
 {
     // Update multiple containers running the same image
     // Trust the caller to send good container data
@@ -33,63 +33,64 @@ public class ContainerUpdater(IDockerClient dockerClient, Config config, ILogger
         var result = await PullImage(imageDescription, cancellationToken);
 
         if (!result)
-            return new (result, null);
+            return new(result, null);
 
         var tasks = containers
             .Select(container => ReplaceContainer(container, imageDescription, cancellationToken))
             .ToArray();
 
         var replaceResult = await Task.WhenAll(tasks);
-        return new (!replaceResult.Any(s => s == null), replaceResult.ToList());
+        return new(!replaceResult.Any(s => s == null), replaceResult.ToList());
     }
 
     private async Task<bool> PullImage(ImageDescription imageDescription, CancellationToken cancellationToken)
     {
-            AuthConfig? authConfig = null;
-            if (string.IsNullOrEmpty(config.RegistryUsername) || string.IsNullOrEmpty(config.RegistryPassword))
+        AuthConfig? authConfig = null;
+        if (string.IsNullOrEmpty(config.RegistryUsername) || string.IsNullOrEmpty(config.RegistryPassword))
+        {
+            logger.LogDebug("No registry credentials provided, pulling public image {ImageName}:{TagName}", imageDescription.Name, imageDescription.Tag);
+        }
+        else
+        {
+            authConfig = new AuthConfig
             {
-                logger.LogDebug("No registry credentials provided, pulling public image {ImageName}:{TagName}", imageDescription.Name, imageDescription.Tag);
-            }
-            else
-            {
-                authConfig = new AuthConfig
-                {
-                    Username = config.RegistryUsername,
-                    Password = config.RegistryPassword,
-                };
-                logger.LogDebug("Pulling private image {ImageName}:{TagName} with credentials", imageDescription.Name, imageDescription.Tag);
-            }
-
-            var progressHandler = new Progress<JSONMessage>(message =>
-            {
-                if (!string.IsNullOrEmpty(message.ProgressMessage))
-                {
-                    logger.LogDebug("Image Pull Progress: {Message}", message.ProgressMessage);
-                }
-                else if (!string.IsNullOrEmpty(message.Status))
-                {
-                    logger.LogDebug("Image Pull Status: {Status}", message.Status);
-                }
-            });
-
-            var imageCreateParameters = new ImagesCreateParameters()
-            {
-                FromImage = imageDescription.Name,
-                Tag = imageDescription.Tag,
+                Username = config.RegistryUsername,
+                Password = config.RegistryPassword,
             };
+            logger.LogDebug("Pulling private image {ImageName}:{TagName} with credentials", imageDescription.Name, imageDescription.Tag);
+        }
 
-            try
+        var progressHandler = new Progress<JSONMessage>(message =>
+        {
+            if (!string.IsNullOrEmpty(message.ProgressMessage))
             {
-                await dockerClient.Images.CreateImageAsync(
-                    imageCreateParameters,
-                    authConfig,
-                    progressHandler,
-                    cancellationToken);
-            } catch (DockerApiException ex)
-            {
-                logger.LogError("Failed to pull image {ImageName}:{TagName} - error {Error}", imageDescription.Name, imageDescription.Tag, ex.Message);
-                return false;
+                logger.LogDebug("Image Pull Progress: {Message}", message.ProgressMessage);
             }
+            else if (!string.IsNullOrEmpty(message.Status))
+            {
+                logger.LogDebug("Image Pull Status: {Status}", message.Status);
+            }
+        });
+
+        var imageCreateParameters = new ImagesCreateParameters()
+        {
+            FromImage = imageDescription.Name,
+            Tag = imageDescription.Tag,
+        };
+
+        try
+        {
+            await dockerClient.Images.CreateImageAsync(
+                imageCreateParameters,
+                authConfig,
+                progressHandler,
+                cancellationToken);
+        }
+        catch (DockerApiException ex)
+        {
+            logger.LogError("Failed to pull image {ImageName}:{TagName} - error {Error}", imageDescription.Name, imageDescription.Tag, ex.Message);
+            return false;
+        }
 
         return true;
     }
@@ -176,13 +177,13 @@ public class ContainerUpdater(IDockerClient dockerClient, Config config, ILogger
         {
             var localContainerImageName = DockerUtil.GetImageNameFromImageDescription(x.Image);
             return localContainerImageName == imageDescription.Name;
-        }).ToList();       
+        }).ToList();
 
         var matchingOutdatedContainers = matchingContainers.Where(container =>
             DockerUtil.GetImageTagFromImageDescription(container.Image) != imageDescription.Tag).ToList();
 
         var upToDateContainers = matchingContainers.Except(matchingOutdatedContainers).ToList();
 
-        return new (matchingOutdatedContainers, upToDateContainers);
+        return new(matchingOutdatedContainers, upToDateContainers);
     }
 }

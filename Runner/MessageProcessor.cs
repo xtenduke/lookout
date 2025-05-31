@@ -1,10 +1,8 @@
 using System.Collections.Concurrent;
-using Docker.DotNet;
-using Docker.DotNet.Models;
 using Lookout.Runner.Docker;
-using Lookout.Runner.Util;
 using Lookout.Runner.Listener;
 using Microsoft.Extensions.Logging;
+using System.Data;
 
 namespace Lookout.Runner;
 
@@ -15,7 +13,6 @@ public interface IMessageProcessor
 
 public class MessageProcessor<T>(
     Config config,
-    IDockerClient dockerClient,
     IQueueListener<T> queueListener,
     IContainerUpdater containerUpdater,
     ILogger<MessageProcessor<T>> logger) : IQueueListenerDelegate<T>, IMessageProcessor
@@ -56,40 +53,33 @@ public class MessageProcessor<T>(
     private async Task ProcessMessage(QueueMessage<T> message, CancellationToken cancellationToken)
     {
         logger.LogDebug("Processing message for imageName: {ImageName}:{TagName}", message.ImageDescription.Name, message.ImageDescription.Tag);
-        var listParameters = new ContainersListParameters();
-        var containers = await dockerClient.Containers.ListContainersAsync(listParameters, cancellationToken);
-        var newImageDescription = message.ImageDescription;
-        var didUpdateContainers = false;
+        var imageDescription = message.ImageDescription;
 
-        var matchingContainers = containers.Where(x =>
-        {
-            var localContainerImageName = DockerUtil.GetImageNameFromImageDescription(x.Image);
-            return localContainerImageName == newImageDescription.Name;
-        }).ToList();
+        var (outdatedContainers, upToDateContainers) = await containerUpdater.ListRunningContainers(message.ImageDescription, cancellationToken);
 
-        if (matchingContainers.Count == 0)
+        if (outdatedContainers.Count == 0 && upToDateContainers.Count == 0)
         {
-            logger.LogError($"Found no containers running {newImageDescription.Name} for update to {newImageDescription.Name}:{newImageDescription.Tag}");
+            logger.LogError("Found no containers running {name} for update to {name}:{tag}", imageDescription.Name, imageDescription.Name, imageDescription.Tag);
+            return;
         }
 
-        var matchingOutdatedContainers = matchingContainers.Where(container =>
-            DockerUtil.GetImageTagFromImageDescription(container.Image) != newImageDescription.Tag).ToList();
-
-        var upToDateContainers = matchingContainers.Except(matchingOutdatedContainers).ToList();
         if (upToDateContainers.Count > 0)
         {
-            logger.LogDebug($"Found container(s) running correct image: {string.Join(',', upToDateContainers.Select(x => $"{x.ID}\n"))}");
+            logger.LogDebug("Found container(s) running correct image: {ids}", string.Join(',', upToDateContainers.Select(x => $"{x.ID}\n")));
         }
 
-        if (matchingOutdatedContainers.Count > 0)
+        if (outdatedContainers.Count > 0)
         {
-            logger.LogDebug($"Found container(s) running outdated image: {string.Join(',', matchingOutdatedContainers.Select(x => $"{x.ID}\n"))}");
-            didUpdateContainers = await containerUpdater.HandleContainerImageUpdate(matchingOutdatedContainers, newImageDescription, cancellationToken);
-        }
+            logger.LogDebug("Found container(s) running outdated image: {ids}", string.Join(',', outdatedContainers.Select(x => $"{x.ID}\n")));
+            var updateContainersResult = await containerUpdater.HandleContainerImageUpdate(
+                outdatedContainers,
+                imageDescription,
+                cancellationToken);
 
-        if (didUpdateContainers)
-        {
-            await queueListener.ConfirmReceipt(message);
+            if (updateContainersResult.Success)
+            {
+                await queueListener.ConfirmReceipt(message);
+            }
         }
     }
 }

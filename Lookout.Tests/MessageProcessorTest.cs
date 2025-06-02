@@ -118,6 +118,37 @@ public class MessageProcessorTest
         _queueListener.Verify(x => x.ConfirmReceipt(queueMessage), Times.Never);
     }
 
+    [Theory]
+    [InlineData("1234", null, true)]
+    [InlineData(null, null, true)]
+    [InlineData(null, "1234", false)]
+    [InlineData("1234", "4567", false)]
+    public async Task It_handles_host_id_config(string? configHostId, string? messageHostId, bool expected)
+    {
+        var sut = new MessageProcessor<TestProviderData>(
+            _configMock,
+            _queueListener.Object,
+            _containerUpdater.Object,
+            _logger.Object);
+
+        var config = _configMock with
+        {
+            HostId = configHostId
+        };
+
+        var queueMessage = CreateQueueMessage(_containerImageDescriptionOne, 1, null, messageHostId);
+
+        sut.OnReceived(queueMessage);
+
+        await Task.Delay(TimeSpan.FromSeconds(5));
+
+        _containerUpdater.Verify(x => x.HandleContainerImageUpdate(
+            It.IsAny<IReadOnlyCollection<ContainerListResponse>>(),
+            It.IsAny<ImageDescription>(), It.IsAny<CancellationToken>()), Times.Exactly(expected ? 1 : 0));
+
+        _queueListener.Verify(x => x.ConfirmReceipt(queueMessage), Times.Exactly(expected ? 1 : 0));
+    }
+
     private void SetupListContainersAsync(RunningContainersResult containers)
     {
         _containerUpdater.Setup(x => x.ListRunningContainers(
@@ -147,11 +178,14 @@ public class MessageProcessorTest
 
     private QueueMessage<TestProviderData> CreateQueueMessage(
         ImageDescription imageDescription,
-        int count = 1, TimeSpan? deployTime = null)
+        int count = 1,
+        TimeSpan? deployTime = null,
+        string? hostId = null)
     {
         return new QueueMessage<TestProviderData>(
             imageDescription,
             new TestProviderData(count),
-            deployTime);
+            deployTime,
+            hostId);
     }
 }

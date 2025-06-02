@@ -33,7 +33,7 @@ public class FakeQueueListener(ILogger<FakeQueueListener> logger) : IQueueListen
             foreach (var listener in queueListener.Value)
             {
                 logger.LogInformation("emitting fake message");
-                listener.OnReceived(new QueueMessage<TestProviderData>(new ImageDescription("redis","7"), new TestProviderData(count), null));
+                listener.OnReceived(new QueueMessage<TestProviderData>(new ImageDescription("redis","7"), new TestProviderData(count), null, null));
             }
         }
 

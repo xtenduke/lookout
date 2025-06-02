@@ -53,6 +53,16 @@ public class MessageProcessor<T>(
     private async Task ProcessMessage(QueueMessage<T> message, CancellationToken cancellationToken)
     {
         logger.LogDebug("Processing message for imageName: {ImageName}:{TagName}", message.ImageDescription.Name, message.ImageDescription.Tag);
+
+        if (message.HostId != null && message.HostId != config.HostId)
+        {
+            // If hostId on message does not match config, then ignore messages.
+            logger.LogDebug("Found message for another hostId: {messageHostId} - currentHostId: {currentHostId}",
+                message.HostId,
+                config.HostId);
+            return;
+        }
+
         var imageDescription = message.ImageDescription;
 
         var (outdatedContainers, upToDateContainers) = await containerUpdater.ListRunningContainers(message.ImageDescription, cancellationToken);

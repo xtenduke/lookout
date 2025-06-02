@@ -12,14 +12,16 @@ If the tag doesn't match the message, lookout will:
 - Start the new one (if fails, restart the old one)
 
 #### Message body
-- ImageName: the name of your image
-- ImageTag: the tag
-- DeployTimeSeconds: how long lookout should expect for the image do download, old one to shut down and new one to spin up
+- `ImageName`: the name of your image
+- `ImageTag`: the tag
+- `DeployTimeSeconds`: (optional) how long lookout should expect for the image do download, old one to shut down and new one to spin up
+- `HostId`: (optional) ID of the host that should consume the message 
 ```
 {
   "ImageName": "redis",
   "ImageTag": "7",
-  "DeployTimeSeconds": "30"
+  "DeployTimeSeconds": "30",
+  "HostId": "f75qrd5p0"
 }
 ```
 
@@ -82,12 +84,15 @@ docker run -d \
 LogLevel=debug
 SqsQueueUrl=https://sqs.ap-southeast-2.amazonaws.com/<your-acct-id>/<your-queue-name>
 
-(or provide your own aws auth)
+# (optional)
+HostId=f75qrd5p0
+
+# (or provide your own aws auth)
 AWS_ACCESS_KEY_ID=<server key id>
 AWS_SECRET_ACCESS_KEY=<server secret>
 AWS_REGION=<queue region>
 
-(optional)
+# (optional)
 RegistryUsername=<private registry username>
 RegistryPassword=<private registry password>
 ```
@@ -105,12 +110,21 @@ Publish a message from your CI or elsewhere to inform lookout of an update (exam
   run: |
     aws sqs send-message \
       --queue-url "$SQS_QUEUE_URL" \
-      -message-body "{\"ImageName\":\"ghcr.io/${{ env.IMAGE_NAME }}\",\"ImageTag\":\"${{ steps.vars.outputs.tag }}\",\"DeployTimeSeconds\":\"30\"}"
+      -message-body "{\"ImageName\":\"ghcr.io/${{ env.IMAGE_NAME }}\",\"ImageTag\":\"${{ steps.vars.outputs.tag }}\",\"DeployTimeSeconds\":\"30\", \"HostId\":\"f75qrd5p0\"}"
 ```
+
+### Sharding / Multiple Listeners
+
+The `HostId` field, configurable via the environment and optionally included in message payloads, provides a mechanism for sharding and supporting multiple concurrent listeners.
+
+- If a message **includes a `HostId`**, it will **only be processed** if it matches the `HostId` in the configuration.  
+- If the configuration includes a `HostId`, but the message does **not** specify one, the message **will still be processed**.  
+- If the message includes a `HostId` and there is **no `HostId` in the configuration**, the message will be **ignored**.
+
+The `HostId` is optional in both the configuration and the message. This mechanism allows multiple service instances to run concurrently, processing only the messages intended for them.
 
 
 ### Caveats / WIP
-- Supports single listener only, messages are deleted/consumed when containers are updated
 - Container filtering isn't that good at the moment, you should clean up old versions of your containers before running this
 - This container needs to bind the docker socket
 - No feedback to CI if deploy has succeeded

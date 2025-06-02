@@ -98,13 +98,13 @@ public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener
             return new QueueMessage<SqsProviderData>(
                 imageDescription,
                 providerData,
-                deployTime);
+                deployTime,
+                body.HostId);
 
         }
-        catch (Exception ex)
+        catch
         {
             logger.LogDebug("Failed to parse message body: {Body}", message.Body);
-            logger.LogError(ex, "Failed to parse message");
             return null;
         }
     }

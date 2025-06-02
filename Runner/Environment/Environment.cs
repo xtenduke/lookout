@@ -8,6 +8,7 @@ public record Config
 
     public string? RegistryUsername { get; init; }
     public string? RegistryPassword { get; init; }
+    public string? HostId { get; init; }
 
     public void Validate()
     {

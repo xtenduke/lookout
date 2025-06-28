@@ -86,6 +86,7 @@ SqsQueueUrl=https://sqs.ap-southeast-2.amazonaws.com/<your-acct-id>/<your-queue-
 
 # (optional)
 HostId=f75qrd5p0
+PollTimeSeconds=20 //1 to 20 - 20 is long polling
 
 # (or provide your own aws auth)
 AWS_ACCESS_KEY_ID=<server key id>

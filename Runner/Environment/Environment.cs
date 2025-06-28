@@ -19,7 +19,7 @@ public record Config
             throw new ArgumentException("SqsQueueUrl must not be empty.");
 
         if (PollTimeSeconds < 1 || PollTimeSeconds > 20) {
-            throw new ArgumentException("Invalid poll time, must be between 1 and 20 inclusive");
+            throw new ArgumentException($"Invalid poll time, must be between 1 and 20 inclusive. Value: {PollTimeSeconds}");
         }
     }
 }

@@ -7,7 +7,7 @@ namespace Lookout.Runner.Listener.Sqs;
 
 public record SqsProviderData(string ReceiptHandle, string MessageId, string QueueUrl);
 
-public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener> logger) : IQueueListener<SqsProviderData>
+public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener> logger, Config config) : IQueueListener<SqsProviderData>
 {
     private JsonSerializerOptions _jsonSerializationOptions = new JsonSerializerOptions {
         PropertyNameCaseInsensitive = true
@@ -17,38 +17,38 @@ public class SqsMessageListener(IAmazonSQS sqsClient, ILogger<SqsMessageListener
     {
         while (true)
         {
-            var message = GetMessage(sqsClient, queue).Result;
-            if (message.Messages.Count > 0)
-            {
-                foreach (var msg in message.Messages)
+            try {
+                var message = GetMessage(sqsClient, queue, config.PollTimeSeconds).Result;
+                if (message.Messages.Count > 0)
                 {
-                    var parsedMessage = ParseMessage(msg, queue);
-                    if (parsedMessage == null)
+                    foreach (var msg in message.Messages)
                     {
-                        logger.LogError($"Failed to deserialize message body");
-                        logger.LogDebug("body: {Body}", msg.Body);
-                        continue;
-                    }
+                        var parsedMessage = ParseMessage(msg, queue);
+                        if (parsedMessage == null)
+                        {
+                            logger.LogError($"Failed to deserialize message body");
+                            logger.LogDebug("body: {Body}", msg.Body);
+                            continue;
+                        }
 
-                    listener.OnReceived(parsedMessage);
+                        listener.OnReceived(parsedMessage);
+                    }
                 }
-            }
-            else
-            {
-                // No messages available, wait for a while before checking again
-                Thread.Sleep(1000);
+            } catch (Exception ex) {
+                logger.LogError(ex, "Error polling SQS");
+                Thread.Sleep(5000);
             }
         }
     }
 
     // Get a message off the queue
-    private static async Task<ReceiveMessageResponse> GetMessage(IAmazonSQS sqsClient, string queue)
+    private static async Task<ReceiveMessageResponse> GetMessage(IAmazonSQS sqsClient, string queue, int WaitTimeSeconds)
     {
         return await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
         {
             QueueUrl = queue,
-            MaxNumberOfMessages = 1,
-            WaitTimeSeconds = 1
+            MaxNumberOfMessages = 5,
+            WaitTimeSeconds = WaitTimeSeconds
         });
     }
 
